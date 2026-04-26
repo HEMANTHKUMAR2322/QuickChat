@@ -62,6 +62,10 @@ fun QuickChatApp() {
         composable("chatlist") {
             ChatList(navController)
         }
+
+        composable("chat") {
+            ChatScreen(navController)
+        }
     }
 }
 
