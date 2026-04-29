@@ -64,15 +64,25 @@ fun QuickChatApp() {
             ChatList(navController)
         }
 
-        composable("chat") {
-            ChatScreen(navController)
+        composable("add_contact") {
+            AddContactScreen(navController)
+        }
+
+        composable("chat/{contactId}/{contactName}") { backStackEntry ->
+            val contactId = backStackEntry.arguments?.getString("contactId") ?: ""
+            val contactName = backStackEntry.arguments?.getString("contactName") ?: ""
+
+            ChatScreen(
+                navController = navController,
+                contactId = contactId,
+                contactName = contactName
+            )
         }
     }
 }
 
 @Composable
 fun SplashScreen(navController: NavHostController) {
-
     val auth = FirebaseAuth.getInstance()
 
     LaunchedEffect(Unit) {
