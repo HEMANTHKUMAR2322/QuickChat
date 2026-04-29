@@ -26,6 +26,7 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import com.google.firebase.auth.FirebaseAuth
 import kotlinx.coroutines.delay
 
 class MainActivity : ComponentActivity() {
@@ -72,10 +73,19 @@ fun QuickChatApp() {
 @Composable
 fun SplashScreen(navController: NavHostController) {
 
+    val auth = FirebaseAuth.getInstance()
+
     LaunchedEffect(Unit) {
         delay(2500)
-        navController.navigate("login") {
-            popUpTo("splash") { inclusive = true }
+
+        if (auth.currentUser != null) {
+            navController.navigate("chatlist") {
+                popUpTo("splash") { inclusive = true }
+            }
+        } else {
+            navController.navigate("login") {
+                popUpTo("splash") { inclusive = true }
+            }
         }
     }
 

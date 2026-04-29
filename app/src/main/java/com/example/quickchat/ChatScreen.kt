@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -20,19 +19,21 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Send
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.Button
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.getValue
@@ -45,26 +46,35 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.ListenerRegistration
 
 data class Message(
-    val text: String,
-    val isSentByMe: Boolean
+    val id: String = "",
+    val text: String = "",
+    val senderId: String = "",
+    val timestamp: Long = System.currentTimeMillis()
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ChatScreen(navController: NavHostController) {
-
+fun ChatScreen(
+    navController: NavHostController,
+    contactId: String,
+    contactName: String
+) {
     var messageText by remember { mutableStateOf("") }
+    val messages = remember { mutableStateListOf<Message>() }
 
-    val messages = remember {
-        mutableStateListOf(
-            Message("Hello!", false),
-            Message("Hi, how are you?", true),
-            Message("I am fine. What about you?", false),
-            Message("Doing well. Working on QuickChat app.", true),
-            Message("Nice! It looks good.", false)
-        )
+    val auth = FirebaseAuth.getInstance()
+    val db = FirebaseFirestore.getInstance()
+    val currentUserId = auth.currentUser?.uid ?: ""
+
+    val chatId = if (currentUserId < contactId) {
+        "${currentUserId}_$contactId"
+    } else {
+        "${contactId}_$currentUserId"
     }
 
     val backgroundBrush = Brush.verticalGradient(
@@ -75,12 +85,39 @@ fun ChatScreen(navController: NavHostController) {
         )
     )
 
+    var listenerRegistration: ListenerRegistration? = remember { null }
+
+    DisposableEffect(chatId) {
+        listenerRegistration = db.collection("chats")
+            .document(chatId)
+            .collection("messages")
+            .orderBy("timestamp")
+            .addSnapshotListener { snapshot, error ->
+                if (error == null && snapshot != null) {
+                    messages.clear()
+                    for (doc in snapshot.documents) {
+                        val message = Message(
+                            id = doc.id,
+                            text = doc.getString("text") ?: "",
+                            senderId = doc.getString("senderId") ?: "",
+                            timestamp = doc.getLong("timestamp") ?: 0L
+                        )
+                        messages.add(message)
+                    }
+                }
+            }
+
+        onDispose {
+            listenerRegistration?.remove()
+        }
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
                 title = {
                     Text(
-                        text = "John",
+                        text = contactName,
                         fontWeight = FontWeight.Bold
                     )
                 },
@@ -114,15 +151,26 @@ fun ChatScreen(navController: NavHostController) {
                     onValueChange = { messageText = it },
                     modifier = Modifier.weight(1f),
                     placeholder = { Text("Type a message") },
-                    shape = RoundedCornerShape(24.dp)
+                    shape = RoundedCornerShape(24.dp),
+                    singleLine = true
                 )
 
                 Spacer(modifier = Modifier.width(8.dp))
 
                 Button(
                     onClick = {
-                        if (messageText.isNotBlank()) {
-                            messages.add(Message(messageText, true))
+                        if (messageText.isNotBlank() && currentUserId.isNotBlank()) {
+                            val newMessage = hashMapOf(
+                                "text" to messageText.trim(),
+                                "senderId" to currentUserId,
+                                "timestamp" to System.currentTimeMillis()
+                            )
+
+                            db.collection("chats")
+                                .document(chatId)
+                                .collection("messages")
+                                .add(newMessage)
+
                             messageText = ""
                         }
                     },
@@ -136,21 +184,36 @@ fun ChatScreen(navController: NavHostController) {
             }
         }
     ) { innerPadding ->
-
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .background(backgroundBrush)
                 .padding(innerPadding)
         ) {
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(12.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                items(messages) { message ->
-                    MessageBubble(message = message)
+            if (messages.isEmpty()) {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "Start chatting with $contactName",
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(messages) { message ->
+                        MessageBubble(
+                            message = message,
+                            isSentByMe = message.senderId == currentUserId
+                        )
+                    }
                 }
             }
         }
@@ -158,15 +221,18 @@ fun ChatScreen(navController: NavHostController) {
 }
 
 @Composable
-fun MessageBubble(message: Message) {
+fun MessageBubble(
+    message: Message,
+    isSentByMe: Boolean
+) {
     Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = if (message.isSentByMe) Arrangement.End else Arrangement.Start
+        horizontalArrangement = if (isSentByMe) Arrangement.End else Arrangement.Start
     ) {
         Card(
             shape = RoundedCornerShape(16.dp),
             colors = CardDefaults.cardColors(
-                containerColor = if (message.isSentByMe) Color(0xFFDCF8C6) else Color.White
+                containerColor = if (isSentByMe) Color(0xFFDCF8C6) else Color.White
             ),
             elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
         ) {
