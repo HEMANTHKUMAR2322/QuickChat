@@ -78,6 +78,10 @@ fun QuickChatApp() {
                 contactName = contactName
             )
         }
+
+        composable("profile") {
+            ProfileScreen(navController)
+        }
     }
 }
 

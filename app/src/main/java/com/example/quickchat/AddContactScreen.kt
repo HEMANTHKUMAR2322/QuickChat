@@ -9,10 +9,15 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -26,13 +31,23 @@ import androidx.navigation.NavHostController
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AddContactScreen(navController: NavHostController) {
 
     var name by remember { mutableStateOf("") }
-    var email by remember { mutableStateOf("") }
+    var phoneNumber by remember { mutableStateOf("") }
+    var selectedCountryCode by remember { mutableStateOf("+44") }
+    var expanded by remember { mutableStateOf(false) }
+
     var errorMessage by remember { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(false) }
+
+    val countryCodes = listOf(
+        "UK (+44)",
+        "India (+91)",
+        "USA (+1)"
+    )
 
     val auth = FirebaseAuth.getInstance()
     val db = FirebaseFirestore.getInstance()
@@ -77,13 +92,54 @@ fun AddContactScreen(navController: NavHostController) {
 
         Spacer(modifier = Modifier.height(12.dp))
 
+        ExposedDropdownMenuBox(
+            expanded = expanded,
+            onExpandedChange = { expanded = !expanded }
+        ) {
+            OutlinedTextField(
+                value = selectedCountryCode,
+                onValueChange = {},
+                readOnly = true,
+                label = { Text("Country Code") },
+                trailingIcon = {
+                    ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded)
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .menuAnchor()
+            )
+
+            ExposedDropdownMenu(
+                expanded = expanded,
+                onDismissRequest = { expanded = false }
+            ) {
+                countryCodes.forEach { country ->
+                    DropdownMenuItem(
+                        text = { Text(country) },
+                        onClick = {
+                            selectedCountryCode = when (country) {
+                                "UK (+44)" -> "+44"
+                                "India (+91)" -> "+91"
+                                "USA (+1)" -> "+1"
+                                else -> "+44"
+                            }
+                            expanded = false
+                            errorMessage = ""
+                        }
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
         OutlinedTextField(
-            value = email,
+            value = phoneNumber,
             onValueChange = {
-                email = it
+                phoneNumber = it.filter { char -> char.isDigit() }
                 errorMessage = ""
             },
-            label = { Text("Contact Email") },
+            label = { Text("Phone Number") },
             modifier = Modifier.fillMaxWidth(),
             singleLine = true
         )
@@ -101,7 +157,7 @@ fun AddContactScreen(navController: NavHostController) {
 
         Button(
             onClick = {
-                if (name.isBlank() || email.isBlank()) {
+                if (name.isBlank() || phoneNumber.isBlank()) {
                     errorMessage = "Please fill all fields"
                     return@Button
                 }
@@ -113,9 +169,13 @@ fun AddContactScreen(navController: NavHostController) {
 
                 isLoading = true
 
+                val fullPhoneNumber = "$selectedCountryCode$phoneNumber"
+
                 val contactData = hashMapOf(
                     "name" to name.trim(),
-                    "email" to email.trim(),
+                    "countryCode" to selectedCountryCode,
+                    "phoneNumber" to phoneNumber.trim(),
+                    "fullPhoneNumber" to fullPhoneNumber,
                     "ownerId" to currentUserId,
                     "createdAt" to System.currentTimeMillis()
                 )
@@ -145,7 +205,10 @@ fun AddContactScreen(navController: NavHostController) {
 
         Spacer(modifier = Modifier.height(10.dp))
 
-        TextButton(onClick = { navController.popBackStack() }) {
+        TextButton(
+            onClick = { navController.popBackStack() },
+            enabled = !isLoading
+        ) {
             Text("Back")
         }
     }
